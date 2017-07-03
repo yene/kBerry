@@ -6,7 +6,7 @@ Please respect the license and use this only with Weinzierl products.
 
 
 ### Setup KNX BAOS Module 838 kBerry
-<img align="right" src="WEINZIERL_838.jpg">
+<img align="right" src="kberry_838.jpg">
 
 Open `sudo nano /boot/cmdline.txt` and remove `console=serial0,115200`.
 
