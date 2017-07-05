@@ -1,0 +1,31 @@
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY DAMAGES OR OTHER LIABILITY,
+WHETHER IN CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+1. Definitions.
+
+"SDK" means all software provided to You in 
+binary code form by Weinzierl Engineering.
+
+2. Permitted Uses.
+
+Subject to the terms and conditions of this Agreement and restrictions and 
+exceptions set forth in the SDK's documentation, Weinzierl Engineering
+grants you a non-exclusive, non-transferable, limited license without fees to
+
+ (a) reproduce and use internally the SDK for the 
+     purposes of developing applications that communicate with 
+     KNX Interface Devices from Weinzierl Engineering 
+     
+ (b) reproduce and distribute the SDK, provided that you
+     distribute the Dynamic Libraries bundled as part of, 
+     and for the sole purpose of running, your application
+
+3. Restrictions.
+
+ (a) Unless enforcement is prohibited by applicable law, you may not decompile, or reverse engineer the SDK
+ (b) The SDK may only be used in conjuction with KNX Interface Devices from Weinzierl Engineering

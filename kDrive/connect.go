@@ -1,13 +1,21 @@
 package kDrive
 
 /*
-#cgo LDFLAGS: -L. -lkdriveExpress
-#include "include/kdrive_express.h"
+#cgo linux,amd64 LDFLAGS: -Llib/ubuntu_1404 -lkdriveExpress
+#cgo windows,386 LDFLAGS: -Llib/Win32 -lkdriveExpress
+#cgo linux,arm LDFLAGS: -Llib/raspbian -lkdriveExpress
+#cgo CFLAGS: -Iinclude/
+
+#include <stdlib.h>
+#include "kdrive_express.h"
 void ErrorCallback(error_t e, void* user_data);
 void OnTelegramCallback(uint8_t* telegram, uint32_t telegram_len, void* user_data);
 */
 import "C"
-import "fmt"
+import (
+	"fmt"
+	"unsafe"
+)
 
 var ap C.int32_t // the Access Port descriptor
 
@@ -21,6 +29,7 @@ func Connect(port string) {
 
 	serialDevice := C.CString(port)
 	res := C.kdrive_ap_open_serial_ft12(ap, serialDevice)
+	C.free(unsafe.Pointer(serialDevice))
 	if res != C.KDRIVE_ERROR_NONE {
 		fmt.Printf("could not access %x\n", res)
 		C.kdrive_ap_release(ap)
