@@ -1,9 +1,9 @@
 package kDrive
 
 /*
-#cgo linux,amd64 LDFLAGS: -Llib/ubuntu_1404 -lkdriveExpress
-#cgo windows,386 LDFLAGS: -Llib/Win32 -lkdriveExpress
-#cgo linux,arm LDFLAGS: -Llib/raspbian -lkdriveExpress
+#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/lib/ubuntu_1404 -lkdriveExpress
+#cgo windows,386 LDFLAGS: -L${SRCDIR}/lib/Win32 -lkdriveExpress
+#cgo linux,arm LDFLAGS: -L${SRCDIR}/lib/raspbian -lkdriveExpress
 #cgo CFLAGS: -Iinclude/
 
 #include <stdlib.h>
