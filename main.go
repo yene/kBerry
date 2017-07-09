@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/yene/kBerry/kDrive"
+	"github.com/yene/kBerry/kdrive"
 )
 
 func main() {
-	kDrive.EnableLogger()
-	kDrive.Connect("/dev/ttyAMA0")
-	kDrive.GAWrite(0x901, true)
-	kDrive.ConnectPacketTrace()
-	kDrive.Close()
+	kdrive.EnableLogger()
+	kdrive.Connect("/dev/ttyAMA0")
+	kdrive.GAWrite(0x901, true)
+	kdrive.ConnectPacketTrace()
+	kdrive.Close()
 }
