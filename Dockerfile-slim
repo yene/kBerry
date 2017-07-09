@@ -1,0 +1,15 @@
+# build with: docker build -f Dockerfile-slim --tag yene/kberry .
+# run with: docker run --rm yene/kberry
+
+# This docker image just compiles it because of CGO.
+FROM golang:1.8 as builder
+RUN mkdir -p /go/src/github.com/yene/kBerry
+COPY . /go/src/github.com/yene/kBerry
+RUN go install github.com/yene/kBerry
+
+# We copy the binary and dependency into a debian image, result size is around 86.5MB
+FROM debian:jessie-slim
+COPY --from=builder /go/bin/kBerry /bin/kBerry
+# Copy the required library into searchpath.
+COPY kdrive/lib/ubuntu_1404/libkdriveExpress.so /bin/
+ENTRYPOINT ["/bin/kBerry"]
