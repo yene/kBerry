@@ -209,18 +209,11 @@ func ConnectPacketTrace() {
 }
 
 func RegisterCallback() {
-	var key C.uint32_t = 0 // used by the telegram callback mechanism. uniquely identifies a callback
+	var key C.uint32_t // used by the telegram callback mechanism. uniquely identifies a callback
 
 	C.kdrive_ap_register_telegram_callback(ap, (*[0]byte)(C.OnTelegramCallback), nil, &key)
 }
 
-/*
-	When a telegram is received we check to see if it is a group value write
-	telegram. If it is, we log the datapoint value.
-	\note The L_Data.con telegrams will in this sample also logged.
-	If you want only see the L_Data.ind then you should check the message code.
-	\see kdrive_ap_get_message_code
-*/
 //export OnTelegramCallback
 func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data unsafe.Pointer) {
 	//slice := (*[1 << 30]C.uint8_t)(unsafe.Pointer(telegram))[:telegram_len:telegram_len]
@@ -228,13 +221,12 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 	// callback called [41 0 188 224 255 100 10 3 1 0 128] = 1/2/3 1bit OFF, source 15.15.100
 
 	var data [C.KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
-	//var sn [C.KDRIVE_SN_LEN]C.uint8_t
-	var data_len C.uint32_t = C.KDRIVE_MAX_GROUP_VALUE_LEN
-	var address C.uint16_t = 0
+	var dataLength C.uint32_t = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	var address C.uint16_t
 
 	if (C.kdrive_ap_is_group_write(telegram, telegram_len) == C.bool_t(1)) &&
 		(C.kdrive_ap_get_dest(telegram, telegram_len, &address) == C.KDRIVE_ERROR_NONE) &&
-		(C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &data_len) == C.KDRIVE_ERROR_NONE) {
+		(C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == C.KDRIVE_ERROR_NONE) {
 
 		ga := knx.GAFromInt(int(address))
 		dpt, ok := addresses[ga]
@@ -244,85 +236,85 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 
 		switch address {
 		case ADDR_DPT_1:
-			var value C.bool_t = 0
-			C.kdrive_dpt_decode_dpt1(&data[0], data_len, &value)
+			var value C.bool_t
+			C.kdrive_dpt_decode_dpt1(&data[0], dataLength, &value)
 			fmt.Printf("DPT 1 - [1 Bit] %d\n", value)
 		case ADDR_DPT_2:
-			var control C.bool_t = 0
-			var value C.bool_t = 0
-			C.kdrive_dpt_decode_dpt2(&data[0], data_len, &control, &value)
+			var control C.bool_t
+			var value C.bool_t
+			C.kdrive_dpt_decode_dpt2(&data[0], dataLength, &control, &value)
 			fmt.Printf("DPT 2 - [1 Bit controlled] %d %d\n", control, value)
 		case ADDR_DPT_3:
-			var control C.bool_t = 0
-			var value C.uint8_t = 0
-			C.kdrive_dpt_decode_dpt3(&data[0], data_len, &control, &value)
+			var control C.bool_t
+			var value C.uint8_t
+			C.kdrive_dpt_decode_dpt3(&data[0], dataLength, &control, &value)
 			fmt.Printf("DPT 3 - [3 Bit controlled] %d %d\n", control, value)
 		case ADDR_DPT_4:
-			var character C.uint8_t = 0
-			C.kdrive_dpt_decode_dpt4(&data[0], data_len, &character)
+			var character C.uint8_t
+			C.kdrive_dpt_decode_dpt4(&data[0], dataLength, &character)
 			fmt.Printf("DPT 4 - [Character] %c\n", character)
 		case ADDR_DPT_5:
-			var value C.uint8_t = 0
-			C.kdrive_dpt_decode_dpt5(&data[0], data_len, &value)
+			var value C.uint8_t
+			C.kdrive_dpt_decode_dpt5(&data[0], dataLength, &value)
 			fmt.Printf("DPT 5 - [8 bit unsigned] 0x%02x\n", value)
 		case ADDR_DPT_6:
-			var value C.int8_t = 0
-			C.kdrive_dpt_decode_dpt6(&data[0], data_len, &value)
+			var value C.int8_t
+			C.kdrive_dpt_decode_dpt6(&data[0], dataLength, &value)
 			fmt.Printf("DPT 6 - [8 bit signed] %d\n", value)
 		case ADDR_DPT_7:
-			var value C.uint16_t = 0
-			C.kdrive_dpt_decode_dpt7(&data[0], data_len, &value)
+			var value C.uint16_t
+			C.kdrive_dpt_decode_dpt7(&data[0], dataLength, &value)
 			fmt.Printf("DPT 7 - [2 byte unsigned] 0x%04x\n", value)
 		case ADDR_DPT_8:
-			var value C.int16_t = 0
-			C.kdrive_dpt_decode_dpt8(&data[0], data_len, &value)
+			var value C.int16_t
+			C.kdrive_dpt_decode_dpt8(&data[0], dataLength, &value)
 			fmt.Printf("DPT 8 - [2 byte signed] %d\n", value)
 		case ADDR_DPT_9:
-			var value C.float32_t = 0
-			C.kdrive_dpt_decode_dpt9(&data[0], data_len, &value)
+			var value C.float32_t
+			C.kdrive_dpt_decode_dpt9(&data[0], dataLength, &value)
 			fmt.Printf("DPT 9 - [2 byte float] %f\n", value)
 		case ADDR_DPT_10_LOCAL, ADDR_DPT_10_UTC, ADDR_DPT_10:
-			var day C.int32_t = 0
-			var hour C.int32_t = 0
-			var minute C.int32_t = 0
-			var second C.int32_t = 0
-			C.kdrive_dpt_decode_dpt10(&data[0], data_len, &day, &hour, &minute, &second)
+			var day C.int32_t
+			var hour C.int32_t
+			var minute C.int32_t
+			var second C.int32_t
+			C.kdrive_dpt_decode_dpt10(&data[0], dataLength, &day, &hour, &minute, &second)
 			fmt.Printf("DPT 10 - [time] %d %d %d %d\n", day, hour, minute, second)
 		case ADDR_DPT_11_LOCAL, ADDR_DPT_11_UTC, ADDR_DPT_11:
-			var year C.int32_t = 0
-			var month C.int32_t = 0
-			var day C.int32_t = 0
-			C.kdrive_dpt_decode_dpt11(&data[0], data_len, &year, &month, &day)
+			var year C.int32_t
+			var month C.int32_t
+			var day C.int32_t
+			C.kdrive_dpt_decode_dpt11(&data[0], dataLength, &year, &month, &day)
 			fmt.Printf("DPT 11 - [date] %d %d %d\n", year, month, day)
 		case ADDR_DPT_12:
-			var value C.uint32_t = 0
-			C.kdrive_dpt_decode_dpt12(&data[0], data_len, &value)
+			var value C.uint32_t
+			C.kdrive_dpt_decode_dpt12(&data[0], dataLength, &value)
 			fmt.Printf("DPT 12 - [4 byte unsigned] 0x%08x\n", value)
 		case ADDR_DPT_13:
-			var value C.int32_t = 0
-			C.kdrive_dpt_decode_dpt13(&data[0], data_len, &value)
+			var value C.int32_t
+			C.kdrive_dpt_decode_dpt13(&data[0], dataLength, &value)
 			fmt.Printf("DPT 13 - [4 byte signed] %d\n", value)
 		case ADDR_DPT_14:
-			var value C.float32_t = 0
-			C.kdrive_dpt_decode_dpt14(&data[0], data_len, &value)
+			var value C.float32_t
+			C.kdrive_dpt_decode_dpt14(&data[0], dataLength, &value)
 			fmt.Printf("DPT 14 - [4 byte float] %f\n", value)
 		case ADDR_DPT_15:
-			var accessCode C.int32_t = 0
-			var err C.bool_t = 0
-			var permission C.bool_t = 0
-			var direction C.bool_t = 0
-			var encrypted C.bool_t = 0
-			var index C.int32_t = 0
-			C.kdrive_dpt_decode_dpt15(&data[0], data_len, &accessCode, &err, &permission, &direction, &encrypted, &index)
+			var accessCode C.int32_t
+			var err C.bool_t
+			var permission C.bool_t
+			var direction C.bool_t
+			var encrypted C.bool_t
+			var index C.int32_t
+			C.kdrive_dpt_decode_dpt15(&data[0], dataLength, &accessCode, &err, &permission, &direction, &encrypted, &index)
 			fmt.Printf("DPT 15 - [entrance access] %d %d %d %d %d %d\n", accessCode, err, permission, direction, encrypted, index)
 		case ADDR_DPT_16:
 			// NOTE: kdrive_dpt_decode_dpt16 is not null terminated.
 			var value [C.KDRIVE_DPT16_LENGTH]C.char
-			C.kdrive_dpt_decode_dpt16(&data[0], data_len, &value[0])
+			C.kdrive_dpt_decode_dpt16(&data[0], dataLength, &value[0])
 			fmt.Printf("DPT 16 - [character string] %s \n", value)
 		default:
 			fmt.Printf("A_GroupValue_Write: 0x%04x \n", address)
-			fmt.Println("A_GroupValue_Write Data :", data, data_len)
+			fmt.Println("A_GroupValue_Write Data :", data, dataLength)
 		}
 	}
 }
