@@ -152,18 +152,18 @@ func Close() {
 }
 
 // SetAddress sets the Individual Address of the Local Device (KNX Interface Device)
-func SetAddress() {
-	// 56696 = 13.13.120
-	res := C.kdrive_ap_set_ind_addr(ap, 56696)
+func SetAddress(ia knx.IndividualAddress) {
+	res := C.kdrive_ap_set_ind_addr(ap, C.uint16_t(ia.Int()))
 	if res != 0 {
 		log.Fatalln("Could not set individual address. Error code", res)
 	}
 }
 
-// GetAddress sets the Individual Address of the Local Device (KNX Interface Device)
-func GetAddress() {
-	// kdrive_ap_get_ind_addr
-
+// GetAddress gets the Individual Address of the Local Device (KNX Interface Device)
+func GetAddress() knx.IndividualAddress {
+	var address C.uint16_t
+	C.kdrive_ap_get_ind_addr(ap, &address)
+	return knx.IAFromInt(int(address))
 }
 
 func IsOpen() bool {

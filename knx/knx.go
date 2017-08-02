@@ -6,6 +6,40 @@ import (
 	"log"
 )
 
+type IndividualAddress struct {
+	Area   int // 4 bits
+	Line   int // 4 bits
+	Device int // 8 bits
+}
+
+func (ia IndividualAddress) String() string {
+	return fmt.Sprintf("%d.%d.%d", ia.Area, ia.Line, ia.Device)
+}
+
+func (ia IndividualAddress) Int() int {
+	return ia.Area<<12 + ia.Line<<8 + ia.Device
+}
+
+func IAFromString(s string) IndividualAddress {
+	ia := IndividualAddress{}
+	if _, err := fmt.Sscanf(s, "%d.%d.%d", &ia.Area, &ia.Line, &ia.Device); err == nil {
+		return ia
+	}
+	log.Printf("Error parsing Individual Address: %s", s)
+
+	return ia
+}
+
+func IAFromInt(i int) IndividualAddress {
+	ia := IndividualAddress{}
+	// 00000000 00001111 = 0x0F 4 bits
+	// 00000000 11111111 = 0xFF 8 bits
+	ia.Area = i >> 12 & 0x0F
+	ia.Line = i >> 8 & 0x0F
+	ia.Device = i & 0xFF
+	return ia
+}
+
 // GroupAddress
 type GroupAddress struct {
 	Main   int // 5 bits
@@ -28,7 +62,7 @@ func GAFromString(s string) GroupAddress {
 }
 
 func (g GroupAddress) Int() int {
-	return g.Sub + g.Middle*8 + g.Main*11
+	return g.Main<<11 + g.Middle<<8 + g.Sub
 }
 
 func GAFromInt(i int) GroupAddress {
