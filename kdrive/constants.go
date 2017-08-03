@@ -123,3 +123,25 @@ const KDRIVE_KER_PACKET_ERROR = 0x3008                  // Packet type not suppo
 const KDRIVE_KER_NO_MORE_CONNECTIONS_ERROR = 0x3009     // No more connections allowed
 const KDRIVE_KER_CONNECTION_FAILED_ERROR = 0x300A       // Could not open transport layer connection
 const KDRIVE_KER_CONFIRM_TIMEOUT_ERROR = 0x300B         // No confirm from device (T-Ack missing)
+
+/*************************************
+ ** Event Codes
+ **************************************/
+
+const KDRIVE_EVENT_ERROR = 0x0000 //  The error signal is emitted when an error was occurred
+
+const KDRIVE_EVENT_OPENING = 0x0001    // The opening signal is emitted when the port is about to be opened
+const KDRIVE_EVENT_OPENED = 0x0002     // The opened signal is emitted when the port was opened
+const KDRIVE_EVENT_CLOSING = 0x0003    // The closing signal is emitted when the port is about to be closed
+const KDRIVE_EVENT_CLOSED = 0x0004     // The closed signal is emitted when the port was closed
+const KDRIVE_EVENT_TERMINATED = 0x0005 // The terminated signal is emitted when the port was closed (internally) on error
+
+const KDRIVE_EVENT_KNX_BUS_CONNECTED = 0x0006    // The knx bus connected signal is emitted when the KNX bus was connected
+const KDRIVE_EVENT_KNX_BUS_DISCONNECTED = 0x0007 // The knx bus disconnected signal is emitted when the KNX bus was disconnected
+const KDRIVE_EVENT_LOCAL_DEVICE_RESET = 0x0008   // The local device reset signal is emitted when a KNX reset.ind was received.
+
+const KDRIVE_EVENT_TELEGRAM_INDICATION = 0x0009      // A telegram was received from the bus
+const KDRIVE_EVENT_TELEGRAM_CONFIRM = 0x000A         // A L_Data_Confirm indication was received after sending a telegram
+const KDRIVE_EVENT_TELEGRAM_CONFIRM_TIMEOUT = 0x000B // A L_Data_Confirm indication was not received after sending a telegram
+
+const KDRIVE_EVENT_INTERNAL_01 = 0x000C // Reserved for internal use

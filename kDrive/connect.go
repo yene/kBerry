@@ -67,7 +67,8 @@ func OpenFT12(port string) error {
 	return nil
 }
 
-// Close closes the connection
+// Close closes the connection.
+// If the access port is not open nothing happens
 func Close() {
 	C.kdrive_ap_close(ap)
 	res := C.kdrive_ap_release(ap)
@@ -91,6 +92,7 @@ func GetAddress() knx.IndividualAddress {
 	return knx.IAFromInt(int(address))
 }
 
+// IsOpen returns whether the access port is open
 func IsOpen() bool {
 	return C.kdrive_ap_is_open(ap) == 1
 }
@@ -127,9 +129,17 @@ func ErrorCallback(e C.error_t, user_data unsafe.Pointer) {
 	C.kdrive_logger(KDRIVE_LOGGER_ERROR, &error_message[0])
 }
 
+// ConnectPacketTrace	starts the Packet Trace, for a specific access port.
+// When no packet trace callback was set (the default) then it write Rx and Tx packets to the logger (level: information), otherwise it calls the callback function.
+// precondition: the access port is open
 func ConnectPacketTrace() {
 	// Connect the Packet Trace logging mechanism to see the Rx and Tx packets
 	C.kdrive_ap_packet_trace_connect(ap)
+}
+
+// DisconnectPacketTrace stops the Packet Trace
+func DisconnectPacketTrace() {
+	C.kdrive_ap_packet_trace_disconnect(ap)
 }
 
 func RegisterCallback() {
