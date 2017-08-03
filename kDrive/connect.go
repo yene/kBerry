@@ -14,6 +14,7 @@ void OnTelegramCallback(uint8_t* telegram, uint32_t telegram_len, void* user_dat
 */
 import "C"
 import (
+	"errors"
 	"fmt"
 	"log"
 	"unsafe"
@@ -44,111 +45,35 @@ const ADDR_DPT_15 = ((ADDR_DPT_14) + 1)           /*!< Group Address of DTP-15 *
 const ADDR_DPT_16 = ((ADDR_DPT_15) + 1)           /*!< Group Address of DTP-16 */
 
 var ap C.int32_t // the Access Port descriptor
-var addresses map[knx.GroupAddress]knx.DPT
-
-func init() {
-	fmt.Println("running kdrive init")
-	addresses = make(map[knx.GroupAddress]knx.DPT)
-}
-
-func AddGA(a int, dpt string) {
-	ga := knx.GAFromInt(a)
-	addresses[ga] = knx.DPTFromString(dpt)
-}
-
-// ScanIPTunnels scans for all KNX IP Tunneling Interface devices.
-func ScanIPTunnels() {
-	ap = C.kdrive_ap_create()
-	var buffer [4]C.struct_ip_tunn_dev_t
-	var length C.uint32_t = 4
-	C.kdrive_ap_enum_ip_tunn(ap, &buffer[0], &length)
-	fmt.Println("found routers", length)
-	fmt.Println(buffer[0])
-	C.kdrive_ap_release(ap)
-}
-
-// ScanAndOpen searches for IP tunnels and opens the first.
-func ScanAndOpen() {
-	ap = C.kdrive_ap_create()
-	var buffer [1]C.struct_ip_tunn_dev_t
-	var length C.uint32_t = 1
-	C.kdrive_ap_enum_ip_tunn(ap, &buffer[0], &length)
-	if length == 0 {
-		fmt.Println("Did not find an IP router")
-		return
-	}
-	var d C.ip_tunn_dev_t = buffer[0]
-	fmt.Println("Found IP Router", C.GoString(&d.ip_address[0]))
-
-	res := C.kdrive_ap_open_ip(ap, &d.ip_address[0])
-	if res != C.KDRIVE_ERROR_NONE {
-		fmt.Printf("could not access %x\n", res)
-		C.kdrive_ap_release(ap)
-		return
-	}
-
-	fmt.Println("opened connection")
-}
-
-// OpenIP opens a connection to a KNX IP Tunneling Interface device.
-func OpenIP(ipAddress string) {
-	if IsOpen() {
-		Close()
-		return
-	}
-
-	ap = C.kdrive_ap_create()
-
-	if ap == C.KDRIVE_INVALID_DESCRIPTOR {
-		fmt.Println("Unable to create access port. This is a terminal failure")
-	}
-
-	ip := C.CString(ipAddress)
-	// eth0 is 4 in my docker
-	//var iface C.char = 4
-	//res := C.kdrive_ap_open_ip_ex(ap, ip, &iface)
-
-	res := C.kdrive_ap_open_ip(ap, ip)
-	C.free(unsafe.Pointer(ip))
-	if res != C.KDRIVE_ERROR_NONE {
-		fmt.Printf("could not access %x\n", res)
-		C.kdrive_ap_release(ap)
-		return
-	}
-
-	fmt.Println("opened connection")
-
-}
 
 // OpenFT12 opens a connection to a KNX FT1.2 serial interface.
-func OpenFT12(port string) {
+func OpenFT12(port string) error {
 	if IsOpen() {
 		Close()
-		return
+		return nil
 	}
-
 	ap = C.kdrive_ap_create()
-
-	if ap == C.KDRIVE_INVALID_DESCRIPTOR {
-		fmt.Println("Unable to create access port. This is a terminal failure")
+	if ap == KDRIVE_INVALID_DESCRIPTOR {
+		return errors.New("unable to create access port, this is a terminal failure")
 	}
-
 	serialDevice := C.CString(port)
 	res := C.kdrive_ap_open_serial_ft12(ap, serialDevice)
 	C.free(unsafe.Pointer(serialDevice))
-	if res != C.KDRIVE_ERROR_NONE {
-		fmt.Printf("could not access %x\n", res)
+	if res != KDRIVE_ERROR_NONE {
 		C.kdrive_ap_release(ap)
-		return
+		return fmt.Errorf("could not access port: %s", getKdriveError(int(res)))
 	}
 
-	fmt.Println("opened connection")
+	return nil
 }
 
 // Close closes the connection
 func Close() {
 	C.kdrive_ap_close(ap)
-	C.kdrive_ap_release(ap)
+	res := C.kdrive_ap_release(ap)
+	if res == 0 {
+		log.Println("the descriptor wasn't found")
+	}
 }
 
 // SetAddress sets the Individual Address of the Local Device (KNX Interface Device)
@@ -182,7 +107,7 @@ func GAWrite(addr uint16, v bool) {
 
 // EnableLogger enables the log.
 func EnableLogger() {
-	C.kdrive_logger_set_level(C.KDRIVE_LOGGER_INFORMATION)
+	C.kdrive_logger_set_level(KDRIVE_LOGGER_INFORMATION)
 	C.kdrive_logger_console()
 	C.kdrive_register_error_callback((*[0]byte)(C.ErrorCallback), nil)
 }
@@ -196,11 +121,10 @@ the error message.
 
 //export ErrorCallback
 func ErrorCallback(e C.error_t, user_data unsafe.Pointer) {
-	if e != C.KDRIVE_TIMEOUT_ERROR {
-		var error_message [ERROR_MESSAGE_LEN]C.char
-		C.kdrive_get_error_message(e, &error_message[0], ERROR_MESSAGE_LEN)
-		C.kdrive_logger(C.KDRIVE_LOGGER_ERROR, &error_message[0])
-	}
+	fmt.Println("Error callback called:", getKdriveError(int(e)))
+	var error_message [ERROR_MESSAGE_LEN]C.char
+	C.kdrive_get_error_message(e, &error_message[0], ERROR_MESSAGE_LEN)
+	C.kdrive_logger(KDRIVE_LOGGER_ERROR, &error_message[0])
 }
 
 func ConnectPacketTrace() {
@@ -220,13 +144,13 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 	//fmt.Println("callback called", slice)
 	// callback called [41 0 188 224 255 100 10 3 1 0 128] = 1/2/3 1bit OFF, source 15.15.100
 
-	var data [C.KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
-	var dataLength C.uint32_t = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	var data [KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
+	var dataLength C.uint32_t = KDRIVE_MAX_GROUP_VALUE_LEN
 	var address C.uint16_t
 
 	if (C.kdrive_ap_is_group_write(telegram, telegram_len) == C.bool_t(1)) &&
-		(C.kdrive_ap_get_dest(telegram, telegram_len, &address) == C.KDRIVE_ERROR_NONE) &&
-		(C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == C.KDRIVE_ERROR_NONE) {
+		(C.kdrive_ap_get_dest(telegram, telegram_len, &address) == KDRIVE_ERROR_NONE) &&
+		(C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == KDRIVE_ERROR_NONE) {
 
 		ga := knx.GAFromInt(int(address))
 		dpt, ok := addresses[ga]
@@ -309,7 +233,7 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 			fmt.Printf("DPT 15 - [entrance access] %d %d %d %d %d %d\n", accessCode, err, permission, direction, encrypted, index)
 		case ADDR_DPT_16:
 			// NOTE: kdrive_dpt_decode_dpt16 is not null terminated.
-			var value [C.KDRIVE_DPT16_LENGTH]C.char
+			var value [KDRIVE_DPT16_LENGTH]C.char
 			C.kdrive_dpt_decode_dpt16(&data[0], dataLength, &value[0])
 			fmt.Printf("DPT 16 - [character string] %s \n", value)
 		default:
@@ -326,106 +250,109 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 func TestCallback() {
 
 	// CGO: When passing an Array to C you have to pass the location of the first value.
-	var buffer [C.KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
+	var buffer [KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
 	var length C.uint32_t
 
 	/* DPT-1 (1 bit) */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt1(&buffer[0], &length, 1)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_1, &buffer[0], length)
+	fmt.Println("dpt1 length", length)
 
 	/* DPT-2: 1 bit controlled */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt2(&buffer[0], &length, 1, 1)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_2, &buffer[0], length)
+	fmt.Println("dpt2 length", length)
 
 	/* DPT-3: 3 bit controlled */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt3(&buffer[0], &length, 1, 0x05)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_3, &buffer[0], length)
+	fmt.Println("dpt3 length", length)
 
 	/* DPT-4: Character */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt4(&buffer[0], &length, 'A')
 	C.kdrive_ap_group_write(ap, ADDR_DPT_4, &buffer[0], length)
 
 	/* DPT-5: 8 bit unsigned value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt5(&buffer[0], &length, 0x23)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_5, &buffer[0], length)
 
 	/* DPT-6: 8 bit signed value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt6(&buffer[0], &length, -5)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_6, &buffer[0], length)
 
 	/* DPT-7: 2 byte unsigned value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt7(&buffer[0], &length, 0xAFFE)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_7, &buffer[0], length)
 
 	/* DPT-8: 2 byte signed value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt8(&buffer[0], &length, -1024)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_8, &buffer[0], length)
 
 	/* DPT-9: 2 byte float value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt9(&buffer[0], &length, 12.25)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_9, &buffer[0], length)
 
 	/* DPT-10: Local Time */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt10_local(&buffer[0], &length)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_10_LOCAL, &buffer[0], length)
 
 	/* DPT-10: UTC Time */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt10_utc(&buffer[0], &length)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_10_UTC, &buffer[0], length)
 
 	/* DPT-10: Time */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt10(&buffer[0], &length, 1, 11, 11, 11)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_10, &buffer[0], length)
 
 	/* DPT-11: Local Date */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt11_local(&buffer[0], &length)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_11_LOCAL, &buffer[0], length)
 
 	/* DPT-11: UTC Date */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt11_utc(&buffer[0], &length)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_11_UTC, &buffer[0], length)
 
 	/* DPT-11: Date */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt11(&buffer[0], &length, 2012, 03, 12)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_11, &buffer[0], length)
 
 	/* DPT-12: 4 byte unsigned value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt12(&buffer[0], &length, 0xDEADBEEF)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_12, &buffer[0], length)
 
 	/* DPT-13: 4 byte signed value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt13(&buffer[0], &length, -30000)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_13, &buffer[0], length)
 
 	/* DPT-14: 4 byte float value */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt14(&buffer[0], &length, 2025.12345)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_14, &buffer[0], length)
 
 	/* DPT-15: Entrance access */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt15(&buffer[0], &length, 1234, 0, 1, 1, 0, 10)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_15, &buffer[0], length)
 
 	/* DPT-16: Character string, 14 bytes */
-	length = C.KDRIVE_MAX_GROUP_VALUE_LEN
+	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	s := C.CString("Weinzierl Eng!")
 	C.kdrive_dpt_encode_dpt16(&buffer[0], &length, s)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_16, &buffer[0], length)

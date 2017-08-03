@@ -2,13 +2,18 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/yene/kBerry/kdrive"
 )
 
 func main() {
 	kdrive.EnableLogger()
-	kdrive.OpenFT12("/dev/ttyAMA0")
+	err := kdrive.OpenFT12("/dev/ttyAMA0")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("current Individual Address", kdrive.GetAddress())
 	kdrive.RegisterCallback()
 	kdrive.AddGA(0x901, "1.001") // 2305
