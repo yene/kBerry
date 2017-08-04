@@ -8,7 +8,6 @@ func init() {
 	addresses = make(map[knx.GroupAddress]knx.DPT)
 }
 
-func AddGA(a int, dpt string) {
-	ga := knx.GAFromInt(a)
-	addresses[ga] = knx.DPTFromString(dpt)
+func AddGroupaddress(ga knx.GroupAddress, dpt knx.DPT) {
+	addresses[ga] = dpt
 }

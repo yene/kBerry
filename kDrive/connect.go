@@ -14,6 +14,7 @@ void OnTelegramCallback(uint8_t* telegram, uint32_t telegram_len, void* user_dat
 */
 import "C"
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -74,16 +75,6 @@ func IsOpen() bool {
 	return C.kdrive_ap_is_open(ap) == 1
 }
 
-func GAWrite(addr uint16, v bool) {
-	var value C.uint8_t = 0
-	if v {
-		value = 1
-	}
-
-	var address C.uint16_t = C.uint16_t(addr)
-	C.kdrive_ap_group_write(ap, address, &value, 1)
-}
-
 // EnableLogger enables the log.
 func EnableLogger() {
 	C.kdrive_logger_set_level(KDRIVE_LOGGER_INFORMATION)
@@ -115,7 +106,36 @@ func DisconnectPacketTrace() {
 
 func RegisterCallback() {
 	var key C.uint32_t // used by the telegram callback mechanism. uniquely identifies a callback
+	/* Registers a callback function.
+	This callback function will be called when a telegram is received
+	by the Access Port. A notification thread is used internally so
+	this callback will be in the context of the notification thread
+	(and not the main thread). That is, care should be taken when calling out from the callback.
+	This function generates a unique key to represent the callback. This key
+	can be used to remove the callback at a later state. */
 	C.kdrive_ap_register_telegram_callback(ap, (*[0]byte)(C.OnTelegramCallback), nil, &key)
+}
+
+func handmadeTelegramExtractor(b []byte) {
+	// [46 0 188 224 | 17 200 | 9 1 | 1 0 | 129]
+	messageCode := b[0:1]
+	noidea := b[1:4]
+	ainda := binary.BigEndian.Uint16(b[4:6])
+	aga := binary.BigEndian.Uint16(b[6:8])
+	alength := int(b[8])
+	//noidea2 := b[9] // I guess the end is the TPCI and half APCI
+	avalue := b[10]
+	fmt.Println(messageCode, noidea, ainda, aga, alength, avalue)
+
+	if alength == 1 { // the value is 4 bit and inside the APCI
+		realvalue := uint(avalue) & 0x0F
+		fmt.Println("real value", realvalue)
+	} else { // the value is at the end
+		realvalue := b[11:]
+		fmt.Println("real value", realvalue)
+	}
+
+	fmt.Println("length", alength)
 }
 
 //export OnTelegramCallback
@@ -129,17 +149,12 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 		C.kdrive_ap_get_dest(telegram, telegram_len, &address) == KDRIVE_ERROR_NONE &&
 		C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == KDRIVE_ERROR_NONE {
 
-		b := C.GoBytes(unsafe.Pointer(telegram), C.int(telegram_len))
-		fmt.Println("I care about this", b)
-		// [46 0 188 224 17 200 9 1 1 0 129]
-		// 9 is GA main and middle, followed by GA sub. followed by length and followed by value.
-		// Checksum at the end
-
+		//b := C.GoBytes(unsafe.Pointer(telegram), C.int(telegram_len))
 		ga := knx.GAFromInt(int(address))
 		dpt, ok := addresses[ga]
 		if !ok {
 			log.Println("I did not find", ga)
-			log.Println("Treat it as raw DPT")
+			log.Println("Please add it to the GA.")
 			return
 		}
 
@@ -149,8 +164,7 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 			C.kdrive_dpt_decode_dpt1(&data[0], dataLength, &value)
 			log.Printf("DPT 1 - [1 Bit] %d\n", value)
 		case 2:
-			var control C.bool_t
-			var value C.bool_t
+			var control, value C.bool_t
 			C.kdrive_dpt_decode_dpt2(&data[0], dataLength, &control, &value)
 			log.Printf("DPT 2 - [1 Bit controlled] %d %d\n", control, value)
 		case 3:
@@ -220,137 +234,58 @@ func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data 
 	}
 }
 
-const ADDR_DPT_1 = (0x0901)                       /*!< Group Address of DTP-1 */
-const ADDR_DPT_2 = (0x090A)                       /*!< Group Address of DTP-2 */
-const ADDR_DPT_3 = ((ADDR_DPT_2) + 1)             /*!< Group Address of DTP-3 */
-const ADDR_DPT_4 = ((ADDR_DPT_3) + 1)             /*!< Group Address of DTP-4 */
-const ADDR_DPT_5 = ((ADDR_DPT_4) + 1)             /*!< Group Address of DTP-5 */
-const ADDR_DPT_6 = ((ADDR_DPT_5) + 1)             /*!< Group Address of DTP-6 */
-const ADDR_DPT_7 = ((ADDR_DPT_6) + 1)             /*!< Group Address of DTP-7 */
-const ADDR_DPT_8 = ((ADDR_DPT_7) + 1)             /*!< Group Address of DTP-8 */
-const ADDR_DPT_9 = ((ADDR_DPT_8) + 1)             /*!< Group Address of DTP-9 */
-const ADDR_DPT_10_LOCAL = ((ADDR_DPT_9) + 1)      /*!< Group Address of DTP-10 Local Time */
-const ADDR_DPT_10_UTC = ((ADDR_DPT_10_LOCAL) + 1) /*!< Group Address of DTP-10 UTC Time */
-const ADDR_DPT_10 = ((ADDR_DPT_10_UTC) + 1)       /*!< Group Address of DTP-10 */
-const ADDR_DPT_11_LOCAL = ((ADDR_DPT_10) + 1)     /*!< Group Address of DTP-11 Local Date */
-const ADDR_DPT_11_UTC = ((ADDR_DPT_11_LOCAL) + 1) /*!< Group Address of DTP-11 UTC Date */
-const ADDR_DPT_11 = ((ADDR_DPT_11_UTC) + 1)       /*!< Group Address of DTP-11 */
-const ADDR_DPT_12 = ((ADDR_DPT_11) + 1)           /*!< Group Address of DTP-12 */
-const ADDR_DPT_13 = ((ADDR_DPT_12) + 1)           /*!< Group Address of DTP-13 */
-const ADDR_DPT_14 = ((ADDR_DPT_13) + 1)           /*!< Group Address of DTP-14 */
-const ADDR_DPT_15 = ((ADDR_DPT_14) + 1)           /*!< Group Address of DTP-15 */
-const ADDR_DPT_16 = ((ADDR_DPT_15) + 1)           /*!< Group Address of DTP-16 */
-
-/*
-  Sends Group Value Write telegrams
-  for Datapoint Types 1 through 16
-*/
-func TestCallback() {
-
-	// CGO: When passing an Array to C you have to pass the location of the first value.
+// GAWrite sends a value to a group address.
+func GAWrite(ga knx.GroupAddress, v ...interface{}) {
 	var buffer [KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
-	var length C.uint32_t
+	var length C.uint32_t = KDRIVE_MAX_GROUP_VALUE_LEN
 
-	/* DPT-1 (1 bit) */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt1(&buffer[0], &length, 1)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_1, &buffer[0], length)
-	return
+	dpt, ok := addresses[ga]
+	if !ok {
+		log.Println("I did not find", ga)
+		log.Println("Please add it to the group address.")
+		return
+	}
 
-	/* DPT-2: 1 bit controlled */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt2(&buffer[0], &length, 1, 1)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_2, &buffer[0], length)
+	switch dpt.Main {
+	case 1: // DPT-1 (1 bit)
+		C.kdrive_dpt_encode_dpt1(&buffer[0], &length, C.bool_t(v[0].(int)))
+	case 2: // DPT-2: 1 bit controlled
+		C.kdrive_dpt_encode_dpt2(&buffer[0], &length, C.bool_t(v[0].(int)), C.bool_t(v[1].(int)))
+	case 3: // DPT-3: 3 bit controlled
+		C.kdrive_dpt_encode_dpt3(&buffer[0], &length, C.bool_t(v[0].(int)), C.uint8_t(v[1].(int)))
+	case 4: //D PT-4: Character
+		char := v[0].(string)
+		C.kdrive_dpt_encode_dpt4(&buffer[0], &length, C.uint8_t([]rune(char)[0]))
+	case 5: // DPT-5: 8 bit unsigned value
+		C.kdrive_dpt_encode_dpt5(&buffer[0], &length, C.uint8_t(v[0].(int)))
+	case 6: // DPT-6: 8 bit signed value
+		C.kdrive_dpt_encode_dpt6(&buffer[0], &length, C.int8_t(v[0].(int)))
+	case 7: // DPT-7: 2 byte unsigned value
+		C.kdrive_dpt_encode_dpt7(&buffer[0], &length, C.uint16_t(v[0].(int)))
+	case 8: // DPT-8: 2 byte signed value
+		C.kdrive_dpt_encode_dpt8(&buffer[0], &length, C.int16_t(v[0].(int)))
+	case 9: // DPT-9: 2 byte float value
+		C.kdrive_dpt_encode_dpt9(&buffer[0], &length, C.float32_t(v[0].(float64)))
+	case 10: // DPT-10: Time
+		C.kdrive_dpt_encode_dpt10(&buffer[0], &length, 1, 11, 11, 11)
+	case 11: // DPT-11: Date
+		C.kdrive_dpt_encode_dpt11(&buffer[0], &length, 2012, 03, 12)
+	case 12: // DPT-12: 4 byte unsigned value
+		C.kdrive_dpt_encode_dpt12(&buffer[0], &length, C.uint32_t(v[0].(uint)))
+	case 13: // DPT-13: 4 byte signed value
+		C.kdrive_dpt_encode_dpt13(&buffer[0], &length, C.int32_t(v[0].(int)))
+	case 14: // DPT-14: 4 byte float value
+		C.kdrive_dpt_encode_dpt14(&buffer[0], &length, C.float32_t(v[0].(float64)))
+	case 15: // DPT-15: Entrance access
+		C.kdrive_dpt_encode_dpt15(&buffer[0], &length, 1234, 0, 1, 1, 0, 10)
+	case 16: // DPT-16: Character string, 14 bytes
+		s := C.CString(v[0].(string))
+		C.kdrive_dpt_encode_dpt16(&buffer[0], &length, s)
+		C.free(unsafe.Pointer(s))
+	default:
+		log.Println("DPT not found")
+		return
+	}
 
-	/* DPT-3: 3 bit controlled */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt3(&buffer[0], &length, 1, 0x05)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_3, &buffer[0], length)
-
-	/* DPT-4: Character */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt4(&buffer[0], &length, 'A')
-	C.kdrive_ap_group_write(ap, ADDR_DPT_4, &buffer[0], length)
-
-	/* DPT-5: 8 bit unsigned value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt5(&buffer[0], &length, 0x23)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_5, &buffer[0], length)
-
-	/* DPT-6: 8 bit signed value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt6(&buffer[0], &length, -5)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_6, &buffer[0], length)
-
-	/* DPT-7: 2 byte unsigned value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt7(&buffer[0], &length, 0xAFFE)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_7, &buffer[0], length)
-
-	/* DPT-8: 2 byte signed value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt8(&buffer[0], &length, -1024)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_8, &buffer[0], length)
-
-	/* DPT-9: 2 byte float value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt9(&buffer[0], &length, 12.25)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_9, &buffer[0], length)
-
-	/* DPT-10: Local Time */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt10_local(&buffer[0], &length)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_10_LOCAL, &buffer[0], length)
-
-	/* DPT-10: UTC Time */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt10_utc(&buffer[0], &length)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_10_UTC, &buffer[0], length)
-
-	/* DPT-10: Time */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt10(&buffer[0], &length, 1, 11, 11, 11)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_10, &buffer[0], length)
-
-	/* DPT-11: Local Date */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt11_local(&buffer[0], &length)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_11_LOCAL, &buffer[0], length)
-
-	/* DPT-11: UTC Date */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt11_utc(&buffer[0], &length)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_11_UTC, &buffer[0], length)
-
-	/* DPT-11: Date */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt11(&buffer[0], &length, 2012, 03, 12)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_11, &buffer[0], length)
-
-	/* DPT-12: 4 byte unsigned value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt12(&buffer[0], &length, 0xDEADBEEF)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_12, &buffer[0], length)
-
-	/* DPT-13: 4 byte signed value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt13(&buffer[0], &length, -30000)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_13, &buffer[0], length)
-
-	/* DPT-14: 4 byte float value */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt14(&buffer[0], &length, 2025.12345)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_14, &buffer[0], length)
-
-	/* DPT-15: Entrance access */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	C.kdrive_dpt_encode_dpt15(&buffer[0], &length, 1234, 0, 1, 1, 0, 10)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_15, &buffer[0], length)
-
-	/* DPT-16: Character string, 14 bytes */
-	length = KDRIVE_MAX_GROUP_VALUE_LEN
-	s := C.CString("Weinzierl Eng!")
-	C.kdrive_dpt_encode_dpt16(&buffer[0], &length, s)
-	C.kdrive_ap_group_write(ap, ADDR_DPT_16, &buffer[0], length)
-	C.free(unsafe.Pointer(s))
+	C.kdrive_ap_group_write(ap, C.uint16_t(ga.Int()), &buffer[0], length)
 }
