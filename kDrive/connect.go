@@ -23,8 +23,6 @@ import (
 	"github.com/yene/kBerry/knx"
 )
 
-const ERROR_MESSAGE_LEN = 128 // kdriveExpress Error Messages
-
 var ap C.int32_t // the Access Port descriptor
 
 // OpenFT12 opens a connection to a KNX FT1.2 serial interface.
@@ -288,4 +286,30 @@ func GAWrite(ga knx.GroupAddress, v ...interface{}) {
 	}
 
 	C.kdrive_ap_group_write(ap, C.uint16_t(ga.Int()), &buffer[0], length)
+}
+
+// GetSerialnumber returns the serial number of a KNX device.
+func GetSerialnumber(indAddr knx.IndividualAddress) (string, error) {
+	sp := C.kdrive_sp_create(ap)
+	defer C.kdrive_sp_release(sp)
+
+	if sp == KDRIVE_INVALID_DESCRIPTOR {
+		return "", fmt.Errorf("Unable to create service port. This is a terminal failure")
+	}
+
+	var data [SERIAL_NUMBER_LENGTH]C.uint8_t
+	var dataLength C.uint32_t = SERIAL_NUMBER_LENGTH
+	res := C.kdrive_sp_prop_value_read(sp, C.uint16_t(indAddr.Int()), 0, 11, 1, 1, &data[0], &dataLength)
+	if res == 0x2004 {
+		return "", fmt.Errorf("no response from device")
+	}
+	if res == KDRIVE_ERROR_NONE {
+		serial := ""
+		for i := C.uint32_t(0); i < dataLength; i++ {
+			serial = fmt.Sprintf("%s%02X", serial, data[i])
+		}
+		return serial, nil
+	}
+
+	return "", fmt.Errorf("could not get serial number: %s", getKdriveError(int(res)))
 }

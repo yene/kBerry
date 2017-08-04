@@ -16,6 +16,14 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println("current Individual Address", kdrive.GetAddress())
+	//kdrive.GetSerialnumber(kdrive.GetAddress())
+	serial, err := kdrive.GetSerialnumber(knx.IAFromString("1.1.4"))
+	if err != nil {
+		fmt.Println("Coud not get serial number:", err)
+	} else {
+		fmt.Println("Serial number of 1.1.4 is", serial)
+	}
+
 	kdrive.RegisterCallback()
 	kdrive.AddGroupaddress(knx.GAFromInt(0x901), knx.DPTFromString("1.001"))
 	kdrive.AddGroupaddress(knx.GAFromInt(0x90A), knx.DPTFromString("2.001"))

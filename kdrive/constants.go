@@ -12,6 +12,8 @@ const KDRIVE_INVALID_DESCRIPTOR = -1   // Indicates an invalid descriptor
 const KDRIVE_DPT16_LENGTH = 14         // The length of a KNX character string for DPT-16 is 112 bits or 14 bytes
 const KDRIVE_MAX_IP_ADDRESS_LEN = 16   // The max length of a formated ip address string e.g. 192.168.234.123; (inclusive 1 byte for zero)
 const KDRIVE_MAX_DEVICE_NAME_LEN = 121 // The max length of a device friendly name (30 char); (inclusive 1 byte for zero + max utf8 char)
+const SERIAL_NUMBER_LENGTH = 6         // The length of a KNX Serial Number
+const ERROR_MESSAGE_LEN = 128          // kdriveExpress Error Messages buffer length
 
 // Logger
 const KDRIVE_LOGGER_NONE = 0        // No logger
