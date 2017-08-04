@@ -13,7 +13,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	fmt.Println("current Individual Address", kdrive.GetAddress())
 	kdrive.RegisterCallback()
 	kdrive.AddGA(0x901, "1.001") // 2305

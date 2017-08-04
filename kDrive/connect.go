@@ -22,37 +22,14 @@ import (
 	"github.com/yene/kBerry/knx"
 )
 
-const ERROR_MESSAGE_LEN = 128                     // kdriveExpress Error Messages
-const ADDR_DPT_1 = (0x0901)                       /*!< Group Address of DTP-1 */
-const ADDR_DPT_2 = (0x090A)                       /*!< Group Address of DTP-2 */
-const ADDR_DPT_3 = ((ADDR_DPT_2) + 1)             /*!< Group Address of DTP-3 */
-const ADDR_DPT_4 = ((ADDR_DPT_3) + 1)             /*!< Group Address of DTP-4 */
-const ADDR_DPT_5 = ((ADDR_DPT_4) + 1)             /*!< Group Address of DTP-5 */
-const ADDR_DPT_6 = ((ADDR_DPT_5) + 1)             /*!< Group Address of DTP-6 */
-const ADDR_DPT_7 = ((ADDR_DPT_6) + 1)             /*!< Group Address of DTP-7 */
-const ADDR_DPT_8 = ((ADDR_DPT_7) + 1)             /*!< Group Address of DTP-8 */
-const ADDR_DPT_9 = ((ADDR_DPT_8) + 1)             /*!< Group Address of DTP-9 */
-const ADDR_DPT_10_LOCAL = ((ADDR_DPT_9) + 1)      /*!< Group Address of DTP-10 Local Time */
-const ADDR_DPT_10_UTC = ((ADDR_DPT_10_LOCAL) + 1) /*!< Group Address of DTP-10 UTC Time */
-const ADDR_DPT_10 = ((ADDR_DPT_10_UTC) + 1)       /*!< Group Address of DTP-10 */
-const ADDR_DPT_11_LOCAL = ((ADDR_DPT_10) + 1)     /*!< Group Address of DTP-11 Local Date */
-const ADDR_DPT_11_UTC = ((ADDR_DPT_11_LOCAL) + 1) /*!< Group Address of DTP-11 UTC Date */
-const ADDR_DPT_11 = ((ADDR_DPT_11_UTC) + 1)       /*!< Group Address of DTP-11 */
-const ADDR_DPT_12 = ((ADDR_DPT_11) + 1)           /*!< Group Address of DTP-12 */
-const ADDR_DPT_13 = ((ADDR_DPT_12) + 1)           /*!< Group Address of DTP-13 */
-const ADDR_DPT_14 = ((ADDR_DPT_13) + 1)           /*!< Group Address of DTP-14 */
-const ADDR_DPT_15 = ((ADDR_DPT_14) + 1)           /*!< Group Address of DTP-15 */
-const ADDR_DPT_16 = ((ADDR_DPT_15) + 1)           /*!< Group Address of DTP-16 */
+const ERROR_MESSAGE_LEN = 128 // kdriveExpress Error Messages
 
 var ap C.int32_t // the Access Port descriptor
 
 // OpenFT12 opens a connection to a KNX FT1.2 serial interface.
 func OpenFT12(port string) error {
-	if IsOpen() {
-		Close()
-		return nil
-	}
 	ap = C.kdrive_ap_create()
+
 	if ap == KDRIVE_INVALID_DESCRIPTOR {
 		return errors.New("unable to create access port, this is a terminal failure")
 	}
@@ -114,13 +91,7 @@ func EnableLogger() {
 	C.kdrive_register_error_callback((*[0]byte)(C.ErrorCallback), nil)
 }
 
-/*
-Called when a kdrive error exception is raised.
-The handling in the error callback is typically
-application specific. And here we simply show
-the error message.
-*/
-
+// ErrorCallback is called when a kdrive error exception is raised.
 //export ErrorCallback
 func ErrorCallback(e C.error_t, user_data unsafe.Pointer) {
 	fmt.Println("Error callback called:", getKdriveError(int(e)))
@@ -144,114 +115,131 @@ func DisconnectPacketTrace() {
 
 func RegisterCallback() {
 	var key C.uint32_t // used by the telegram callback mechanism. uniquely identifies a callback
-
 	C.kdrive_ap_register_telegram_callback(ap, (*[0]byte)(C.OnTelegramCallback), nil, &key)
 }
 
 //export OnTelegramCallback
 func OnTelegramCallback(telegram *C.uint8_t, telegram_len C.uint32_t, user_data unsafe.Pointer) {
-	//slice := (*[1 << 30]C.uint8_t)(unsafe.Pointer(telegram))[:telegram_len:telegram_len]
-	//fmt.Println("callback called", slice)
-	// callback called [41 0 188 224 255 100 10 3 1 0 128] = 1/2/3 1bit OFF, source 15.15.100
 
 	var data [KDRIVE_MAX_GROUP_VALUE_LEN]C.uint8_t
 	var dataLength C.uint32_t = KDRIVE_MAX_GROUP_VALUE_LEN
 	var address C.uint16_t
 
-	if (C.kdrive_ap_is_group_write(telegram, telegram_len) == C.bool_t(1)) &&
-		(C.kdrive_ap_get_dest(telegram, telegram_len, &address) == KDRIVE_ERROR_NONE) &&
-		(C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == KDRIVE_ERROR_NONE) {
+	if C.kdrive_ap_is_group_write(telegram, telegram_len) == 1 &&
+		C.kdrive_ap_get_dest(telegram, telegram_len, &address) == KDRIVE_ERROR_NONE &&
+		C.kdrive_ap_get_group_data(telegram, telegram_len, &data[0], &dataLength) == KDRIVE_ERROR_NONE {
+
+		b := C.GoBytes(unsafe.Pointer(telegram), C.int(telegram_len))
+		fmt.Println("I care about this", b)
+		// [46 0 188 224 17 200 9 1 1 0 129]
+		// 9 is GA main and middle, followed by GA sub. followed by length and followed by value.
+		// Checksum at the end
 
 		ga := knx.GAFromInt(int(address))
 		dpt, ok := addresses[ga]
-		if ok {
-			fmt.Println("I found", dpt, "for", ga)
+		if !ok {
+			log.Println("I did not find", ga)
+			log.Println("Treat it as raw DPT")
+			return
 		}
 
-		switch address {
-		case ADDR_DPT_1:
+		switch dpt.Main {
+		case 1:
 			var value C.bool_t
 			C.kdrive_dpt_decode_dpt1(&data[0], dataLength, &value)
-			fmt.Printf("DPT 1 - [1 Bit] %d\n", value)
-		case ADDR_DPT_2:
+			log.Printf("DPT 1 - [1 Bit] %d\n", value)
+		case 2:
 			var control C.bool_t
 			var value C.bool_t
 			C.kdrive_dpt_decode_dpt2(&data[0], dataLength, &control, &value)
-			fmt.Printf("DPT 2 - [1 Bit controlled] %d %d\n", control, value)
-		case ADDR_DPT_3:
+			log.Printf("DPT 2 - [1 Bit controlled] %d %d\n", control, value)
+		case 3:
 			var control C.bool_t
 			var value C.uint8_t
 			C.kdrive_dpt_decode_dpt3(&data[0], dataLength, &control, &value)
-			fmt.Printf("DPT 3 - [3 Bit controlled] %d %d\n", control, value)
-		case ADDR_DPT_4:
+			log.Printf("DPT 3 - [3 Bit controlled] %d %d\n", control, value)
+		case 4:
 			var character C.uint8_t
 			C.kdrive_dpt_decode_dpt4(&data[0], dataLength, &character)
-			fmt.Printf("DPT 4 - [Character] %c\n", character)
-		case ADDR_DPT_5:
+			log.Printf("DPT 4 - [Character] %c\n", character)
+		case 5:
 			var value C.uint8_t
 			C.kdrive_dpt_decode_dpt5(&data[0], dataLength, &value)
-			fmt.Printf("DPT 5 - [8 bit unsigned] 0x%02x\n", value)
-		case ADDR_DPT_6:
+			log.Printf("DPT 5 - [8 bit unsigned] 0x%02x\n", value)
+		case 6:
 			var value C.int8_t
 			C.kdrive_dpt_decode_dpt6(&data[0], dataLength, &value)
-			fmt.Printf("DPT 6 - [8 bit signed] %d\n", value)
-		case ADDR_DPT_7:
+			log.Printf("DPT 6 - [8 bit signed] %d\n", value)
+		case 7:
 			var value C.uint16_t
 			C.kdrive_dpt_decode_dpt7(&data[0], dataLength, &value)
-			fmt.Printf("DPT 7 - [2 byte unsigned] 0x%04x\n", value)
-		case ADDR_DPT_8:
+			log.Printf("DPT 7 - [2 byte unsigned] 0x%04x\n", value)
+		case 8:
 			var value C.int16_t
 			C.kdrive_dpt_decode_dpt8(&data[0], dataLength, &value)
-			fmt.Printf("DPT 8 - [2 byte signed] %d\n", value)
-		case ADDR_DPT_9:
+			log.Printf("DPT 8 - [2 byte signed] %d\n", value)
+		case 9:
 			var value C.float32_t
 			C.kdrive_dpt_decode_dpt9(&data[0], dataLength, &value)
-			fmt.Printf("DPT 9 - [2 byte float] %f\n", value)
-		case ADDR_DPT_10_LOCAL, ADDR_DPT_10_UTC, ADDR_DPT_10:
-			var day C.int32_t
-			var hour C.int32_t
-			var minute C.int32_t
-			var second C.int32_t
+			log.Printf("DPT 9 - [2 byte float] %f\n", value)
+		case 10:
+			var day, hour, minute, second C.int32_t
 			C.kdrive_dpt_decode_dpt10(&data[0], dataLength, &day, &hour, &minute, &second)
-			fmt.Printf("DPT 10 - [time] %d %d %d %d\n", day, hour, minute, second)
-		case ADDR_DPT_11_LOCAL, ADDR_DPT_11_UTC, ADDR_DPT_11:
-			var year C.int32_t
-			var month C.int32_t
-			var day C.int32_t
+			log.Printf("DPT 10 - [time] %d %d %d %d\n", day, hour, minute, second)
+		case 11:
+			var year, month, day C.int32_t
 			C.kdrive_dpt_decode_dpt11(&data[0], dataLength, &year, &month, &day)
-			fmt.Printf("DPT 11 - [date] %d %d %d\n", year, month, day)
-		case ADDR_DPT_12:
+			log.Printf("DPT 11 - [date] %d %d %d\n", year, month, day)
+		case 12:
 			var value C.uint32_t
 			C.kdrive_dpt_decode_dpt12(&data[0], dataLength, &value)
-			fmt.Printf("DPT 12 - [4 byte unsigned] 0x%08x\n", value)
-		case ADDR_DPT_13:
+			log.Printf("DPT 12 - [4 byte unsigned] 0x%08x\n", value)
+		case 13:
 			var value C.int32_t
 			C.kdrive_dpt_decode_dpt13(&data[0], dataLength, &value)
-			fmt.Printf("DPT 13 - [4 byte signed] %d\n", value)
-		case ADDR_DPT_14:
+			log.Printf("DPT 13 - [4 byte signed] %d\n", value)
+		case 14:
 			var value C.float32_t
 			C.kdrive_dpt_decode_dpt14(&data[0], dataLength, &value)
-			fmt.Printf("DPT 14 - [4 byte float] %f\n", value)
-		case ADDR_DPT_15:
-			var accessCode C.int32_t
-			var err C.bool_t
-			var permission C.bool_t
-			var direction C.bool_t
-			var encrypted C.bool_t
-			var index C.int32_t
+			log.Printf("DPT 14 - [4 byte float] %f\n", value)
+		case 15:
+			var accessCode, index C.int32_t
+			var err, permission, direction, encrypted C.bool_t
 			C.kdrive_dpt_decode_dpt15(&data[0], dataLength, &accessCode, &err, &permission, &direction, &encrypted, &index)
-			fmt.Printf("DPT 15 - [entrance access] %d %d %d %d %d %d\n", accessCode, err, permission, direction, encrypted, index)
-		case ADDR_DPT_16:
+			log.Printf("DPT 15 - [entrance access] %d %d %d %d %d %d\n", accessCode, err, permission, direction, encrypted, index)
+		case 16:
 			// NOTE: kdrive_dpt_decode_dpt16 is not null terminated.
 			var value [KDRIVE_DPT16_LENGTH]C.char
 			C.kdrive_dpt_decode_dpt16(&data[0], dataLength, &value[0])
-			fmt.Printf("DPT 16 - [character string] %s \n", value)
+			s := C.GoStringN(&value[0], C.int(dataLength))
+			log.Printf("DPT 16 - [character string] %s \n", s)
 		default:
-			fmt.Printf("A_GroupValue_Write: 0x%04x \n", address)
-			fmt.Println("A_GroupValue_Write Data :", data, dataLength)
+			log.Printf("A_GroupValue_Write: 0x%04x \n", address)
+			log.Println("A_GroupValue_Write Data :", data, dataLength)
 		}
 	}
 }
+
+const ADDR_DPT_1 = (0x0901)                       /*!< Group Address of DTP-1 */
+const ADDR_DPT_2 = (0x090A)                       /*!< Group Address of DTP-2 */
+const ADDR_DPT_3 = ((ADDR_DPT_2) + 1)             /*!< Group Address of DTP-3 */
+const ADDR_DPT_4 = ((ADDR_DPT_3) + 1)             /*!< Group Address of DTP-4 */
+const ADDR_DPT_5 = ((ADDR_DPT_4) + 1)             /*!< Group Address of DTP-5 */
+const ADDR_DPT_6 = ((ADDR_DPT_5) + 1)             /*!< Group Address of DTP-6 */
+const ADDR_DPT_7 = ((ADDR_DPT_6) + 1)             /*!< Group Address of DTP-7 */
+const ADDR_DPT_8 = ((ADDR_DPT_7) + 1)             /*!< Group Address of DTP-8 */
+const ADDR_DPT_9 = ((ADDR_DPT_8) + 1)             /*!< Group Address of DTP-9 */
+const ADDR_DPT_10_LOCAL = ((ADDR_DPT_9) + 1)      /*!< Group Address of DTP-10 Local Time */
+const ADDR_DPT_10_UTC = ((ADDR_DPT_10_LOCAL) + 1) /*!< Group Address of DTP-10 UTC Time */
+const ADDR_DPT_10 = ((ADDR_DPT_10_UTC) + 1)       /*!< Group Address of DTP-10 */
+const ADDR_DPT_11_LOCAL = ((ADDR_DPT_10) + 1)     /*!< Group Address of DTP-11 Local Date */
+const ADDR_DPT_11_UTC = ((ADDR_DPT_11_LOCAL) + 1) /*!< Group Address of DTP-11 UTC Date */
+const ADDR_DPT_11 = ((ADDR_DPT_11_UTC) + 1)       /*!< Group Address of DTP-11 */
+const ADDR_DPT_12 = ((ADDR_DPT_11) + 1)           /*!< Group Address of DTP-12 */
+const ADDR_DPT_13 = ((ADDR_DPT_12) + 1)           /*!< Group Address of DTP-13 */
+const ADDR_DPT_14 = ((ADDR_DPT_13) + 1)           /*!< Group Address of DTP-14 */
+const ADDR_DPT_15 = ((ADDR_DPT_14) + 1)           /*!< Group Address of DTP-15 */
+const ADDR_DPT_16 = ((ADDR_DPT_15) + 1)           /*!< Group Address of DTP-16 */
 
 /*
   Sends Group Value Write telegrams
@@ -267,19 +255,17 @@ func TestCallback() {
 	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt1(&buffer[0], &length, 1)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_1, &buffer[0], length)
-	fmt.Println("dpt1 length", length)
+	return
 
 	/* DPT-2: 1 bit controlled */
 	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt2(&buffer[0], &length, 1, 1)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_2, &buffer[0], length)
-	fmt.Println("dpt2 length", length)
 
 	/* DPT-3: 3 bit controlled */
 	length = KDRIVE_MAX_GROUP_VALUE_LEN
 	C.kdrive_dpt_encode_dpt3(&buffer[0], &length, 1, 0x05)
 	C.kdrive_ap_group_write(ap, ADDR_DPT_3, &buffer[0], length)
-	fmt.Println("dpt3 length", length)
 
 	/* DPT-4: Character */
 	length = KDRIVE_MAX_GROUP_VALUE_LEN

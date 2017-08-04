@@ -1,3 +1,9 @@
+// Getting C array into bytes without converting
+https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
+slice := (*[1 << 30]C.uint8_t)(unsafe.Pointer(telegram))[:telegram_len:telegram_len]
+fmt.Println("callback called", slice)
+Dont use this, the memory is in C!
+
 // ScanIPTunnels scans for all KNX IP Tunneling Interface devices.
 func ScanIPTunnels() {
 	ap = C.kdrive_ap_create()
