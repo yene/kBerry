@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -10,8 +11,11 @@ import (
 )
 
 func main() {
+	port := flag.String("port", "/dev/ttyAMA0", "Serial Port")
+	flag.Parse()
+
 	kdrive.EnableLogger()
-	err := kdrive.OpenFT12("/dev/ttyAMA0")
+	err := kdrive.OpenFT12(*port)
 	if err != nil {
 		log.Fatal(err)
 	}
